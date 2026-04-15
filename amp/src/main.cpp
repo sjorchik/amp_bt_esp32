@@ -277,20 +277,22 @@ void handleInputEvent(InputEvent event) {
                     Serial.println("UP");
                     {
                         AudioInput current = tda7318GetInput();
-                        AudioInput next = (AudioInput)((current + 1) % INPUT_COUNT);
-                        tda7318SetInput(next);
-                        Serial.println("[Input] Вхід: " + String(next));
-                        displayUpdateInput(next);
+                        AudioInput prev = (AudioInput)((current == 0) ? (INPUT_COUNT - 1) : (current - 1));
+                        tda7318SetInput(prev);
+                        Serial.println("[Input] Вхід: " + String(prev));
+                        displayUpdateInput(prev);
+                        displayUpdateVolume(tda7318GetVolume());
                     }
                     break;
                 case BTN_FUNC_DOWN:
                     Serial.println("DOWN");
                     {
                         AudioInput current = tda7318GetInput();
-                        AudioInput prev = (AudioInput)((current == 0) ? (INPUT_COUNT - 1) : (current - 1));
-                        tda7318SetInput(prev);
-                        Serial.println("[Input] Вхід: " + String(prev));
-                        displayUpdateInput(prev);
+                        AudioInput next = (AudioInput)((current + 1) % INPUT_COUNT);
+                        tda7318SetInput(next);
+                        Serial.println("[Input] Вхід: " + String(next));
+                        displayUpdateInput(next);
+                        displayUpdateVolume(tda7318GetVolume());
                     }
                     break;
                 case BTN_FUNC_LEFT:

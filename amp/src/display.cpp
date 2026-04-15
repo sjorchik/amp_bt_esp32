@@ -1,104 +1,140 @@
 #include "display.h"
 #include <TFT_eSPI.h>
 #include <SPIFFS.h>
+#include <FS.h>
+#include "fonts/Arsenal_Bold40.h"
+#include "fonts/Arsenal_Bold25.h"
 
 static TFT_eSPI tft = TFT_eSPI();
 
+static const char* inputLabels[] = {"BT", "PC", "TV", "AUX"};
 static const char* inputNames[] = {"Bluetooth", "Computer", "TV Box", "AUX"};
-static const char* paramNames[] = {"Гучність", "НЧ", "ВЧ", "Баланс", "Підсилення"};
+static const char* inputImages[] = {"/bt_.bmp", "/pc_.bmp", "/tv_.bmp", "/aux_.bmp"};
 
-static uint8_t lastVolume = 255;
 static AudioInput lastInput = (AudioInput)255;
-static Parameter lastParam = (Parameter)255;
-static int16_t lastParamValue = 32767;
-static bool lastStandby = false;
-static bool lastBTConnected = false;
-
-static bool fontsLoaded = false;
-
-static void loadFonts() {
-    if (fontsLoaded) return;
-    
-    if (!SPIFFS.begin(true)) {
-        DEBUG_PRINTLN("[DISPLAY] SPIFFS помилка!");
-        return;
-    }
-    
-    if (SPIFFS.exists("/Arsenal-Bold15.vlw")) {
-        DEBUG_PRINTLN("[DISPLAY] Шрифти Arsenal знайдено в SPIFFS");
-    } else {
-        DEBUG_PRINTLN("[DISPLAY] Шрифти не знайдено! Завантажте: platformio run --target uploadfs");
-    }
-    
-    fontsLoaded = true;
-}
+static uint8_t lastVolume = 255;
 
 static void drawVolumeBar(uint8_t volume) {
-    int barX = 20;
-    int barY = 75;
-    int barW = 280;
-    int barH = 35;
+    int barX = 290;
+    int barY = 20;
+    int barW = 20;
+    int barH = 140;
     
     tft.fillRect(barX, barY, barW, barH, 0x18E3);
     
-    int fillW = (volume * barW) / 63;
-    uint16_t color;
-    if (volume < 30) color = 0x07E0;
-    else if (volume < 50) color = 0xFFE0;
-    else color = 0xF800;
-    
-    tft.fillRect(barX, barY, fillW, barH, color);
+    int fillH = (volume * barH) / 63;
+    int fillY = barY + barH - fillH;
+    tft.fillRect(barX, fillY, barW, fillH, 0x001F);
     tft.drawRect(barX, barY, barW, barH, 0xFFFF);
+}
+
+static void drawInputImage() {
+    if (lastInput >= INPUT_COUNT) return;
     
-    tft.loadFont("Arsenal-Bold20");
+    tft.fillRect(60, 55, 230, 115, 0x0000);
+    
+    const char* imgPath = inputImages[lastInput];
+    fs::File bmpFS = SPIFFS.open(imgPath, "r");
+    if (!bmpFS) return;
+    
+    if (bmpFS.read() != 'B' || bmpFS.read() != 'M') {
+        bmpFS.close();
+        return;
+    }
+    
+    bmpFS.seek(0);
+    uint8_t header[54];
+    bmpFS.read(header, 54);
+    
+    int32_t bmpWidth = *(int32_t*)&header[18];
+    int32_t bmpHeight = *(int32_t*)&header[22];
+    uint16_t bitsPerPixel = *(uint16_t*)&header[28];
+    int32_t dataOffset = *(int32_t*)&header[10];
+    
+    int16_t drawX = 60 + (230 - bmpWidth) / 2;
+    int16_t drawY = 55 + (115 - bmpHeight) / 2;
+    
+    if (bitsPerPixel == 24) {
+        int32_t rowSize = (bmpWidth * 3 + 3) & ~3;
+        uint8_t *allData = new uint8_t[rowSize * bmpHeight];
+        bmpFS.seek(dataOffset);
+        bmpFS.read(allData, rowSize * bmpHeight);
+        
+        uint16_t *imgBuf = new uint16_t[bmpWidth * bmpHeight];
+        
+        for (int32_t row = 0; row < bmpHeight; row++) {
+            int32_t srcRow = bmpHeight - 1 - row;
+            uint8_t *rowPtr = allData + srcRow * rowSize;
+            
+            for (int32_t col = 0; col < bmpWidth; col++) {
+                uint8_t *pixelPtr = rowPtr + col * 3;
+                uint8_t b = pixelPtr[0];
+                uint8_t g = pixelPtr[1];
+                uint8_t r = pixelPtr[2];
+                imgBuf[row * bmpWidth + col] = (r & 0xF8) << 8 | (g & 0xFC) << 3 | (b >> 3);
+            }
+        }
+        
+        tft.setSwapBytes(true);
+        tft.pushImage(drawX, drawY, bmpWidth, bmpHeight, imgBuf);
+        tft.setSwapBytes(false);
+        
+        delete[] imgBuf;
+        delete[] allData;
+    }
+    
+    bmpFS.close();
+}
+
+static void drawInputName() {
+    if (lastInput >= INPUT_COUNT) return;
+    
+    int nameX = 60;
+    int nameY = 10;
+    int nameW = 230;
+    
+    tft.fillRect(nameX, nameY, nameW, 45, 0x0000);
+    
+    tft.loadFont(Arsenal_Bold40);
     tft.setTextColor(0xFFFF);
-    tft.setCursor(barX + 90, barY + 5);
-    tft.print(volume);
-    tft.print(" / 63");
+    
+    const char* name = inputNames[lastInput];
+    int len = strlen(name);
+    int textX = nameX + (nameW - len * 22) / 2;
+    tft.setCursor(max(nameX, textX), nameY);
+    tft.print(name);
     tft.unloadFont();
 }
 
-static void drawHeader() {
-    tft.fillRect(0, 0, 320, 35, 0x001F);
+static void drawInputButtons() {
+    int btnW = 50;
+    int btnH = 32;
+    int btnX = 5;
+    int startY = 15;
+    int gap = 6;
     
-    tft.loadFont("Arsenal-Bold20");
-    tft.setTextColor(0xFFFF);
-    tft.setCursor(10, 6);
-    tft.print("ESP32 Audio");
+    tft.loadFont(Arsenal_Bold25);
     
-    tft.unloadFont();
-    tft.loadFont("Arsenal-Bold15");
-    tft.setTextColor(0xFFFF);
-    tft.setCursor(180, 10);
-    const char* inp = (lastInput < INPUT_COUNT) ? inputNames[lastInput] : "Unknown";
-    tft.print("In: ");
-    tft.print(inp);
-    tft.unloadFont();
-    
-    if (lastBTConnected) {
-        tft.loadFont("Arsenal-Bold15");
-        tft.setTextColor(0x07FF);
-        tft.setCursor(280, 10);
-        tft.print("BT");
-        tft.unloadFont();
+    for (int i = 0; i < 4; i++) {
+        int btnY = startY + i * (btnH + gap);
+        int nameLen = strlen(inputLabels[i]);
+        int textX = btnX + (btnW - nameLen * 14) / 2;
+        int textY = btnY + 6;
+        
+        if (i == lastInput) {
+            tft.fillRect(btnX, btnY, btnW, btnH, 0x001F);
+            tft.drawRect(btnX, btnY, btnW, btnH, 0x07FF);
+            tft.setTextColor(0x07FF);
+        } else {
+            tft.fillRect(btnX, btnY, btnW, btnH, 0x18E3);
+            tft.drawRect(btnX, btnY, btnW, btnH, 0x39E7);
+            tft.setTextColor(0xAD55);
+        }
+        
+        tft.setCursor(textX, textY);
+        tft.print(inputLabels[i]);
     }
-}
-
-static void drawFooter() {
-    tft.fillRect(0, 135, 320, 35, 0x001F);
     
-    tft.loadFont("Arsenal-Bold15");
-    tft.setTextColor(0xFFFF);
-    tft.setCursor(10, 145);
-    
-    if (lastStandby) {
-        tft.setTextColor(0xF800);
-        tft.print("STANDBY");
-    } else {
-        const char* pname = (lastParam < PARAM_COUNT) ? paramNames[lastParam] : "";
-        tft.print("Param: ");
-        tft.print(pname);
-    }
     tft.unloadFont();
 }
 
@@ -107,98 +143,33 @@ void displayInit() {
     tft.setRotation(1);
     tft.fillScreen(0x0000);
     
-    loadFonts();
+    if (!SPIFFS.begin(true)) {
+        DEBUG_PRINTLN("[DISPLAY] SPIFFS помилка!");
+    }
     
-    tft.loadFont("Arsenal-Bold26");
-    tft.setTextColor(0xFFFF);
-    tft.setCursor(60, 50);
-    tft.print("ESP32 Audio");
-    tft.unloadFont();
-    
-    tft.loadFont("Arsenal-Bold20");
-    tft.setCursor(80, 95);
-    tft.print("Controller");
-    tft.unloadFont();
-    delay(1500);
-    
-    tft.fillScreen(0x0000);
-    drawHeader();
-    drawFooter();
+    drawInputButtons();
+    drawInputName();
+    drawInputImage();
+    drawVolumeBar(0);
     
     DEBUG_PRINTLN("[DISPLAY] Ініціалізовано ST7789 320x170");
-}
-
-void displayUpdateVolume(uint8_t volume) {
-    if (volume == lastVolume) return;
-    lastVolume = volume;
-    
-    drawVolumeBar(volume);
 }
 
 void displayUpdateInput(AudioInput input) {
     if (input == lastInput) return;
     lastInput = input;
-    
-    drawHeader();
+    drawInputButtons();
+    drawInputName();
+    drawInputImage();
 }
 
-void displayUpdateParameter(Parameter param, int16_t value) {
-    if (param == lastParam && value == lastParamValue) return;
-    lastParam = param;
-    lastParamValue = value;
-    
-    tft.fillRect(0, 35, 320, 100, 0x0000);
-    
-    tft.loadFont("Arsenal-Bold20");
-    tft.setTextColor(0xFFFF);
-    tft.setCursor(10, 45);
-    
-    const char* pname = (param < PARAM_COUNT) ? paramNames[param] : "";
-    tft.print(pname);
-    tft.unloadFont();
-    
-    tft.loadFont("Arsenal-Bold26");
-    tft.setTextColor(0x07FF);
-    tft.setCursor(140, 50);
-    tft.print(value);
-    tft.unloadFont();
-    
-    drawFooter();
+void displayUpdateVolume(uint8_t volume) {
+    if (volume == lastVolume) return;
+    lastVolume = volume;
+    drawVolumeBar(volume);
 }
 
-void displayShowMessage(const char* message) {
-    tft.fillRect(0, 35, 320, 100, 0x0000);
-    
-    tft.loadFont("Arsenal-Bold20");
-    tft.setTextColor(0x07FF);
-    
-    int len = strlen(message);
-    int x = (320 - len * 14) / 2;
-    tft.setCursor(max(10, x), 70);
-    tft.print(message);
-    tft.unloadFont();
-}
-
-void displaySetStandby(bool standby) {
-    if (standby == lastStandby) return;
-    lastStandby = standby;
-    
-    if (standby) {
-        tft.fillScreen(0x0000);
-        tft.loadFont("Arsenal-Bold26");
-        tft.setTextColor(0xF800);
-        tft.setCursor(70, 50);
-        tft.print("STANDBY");
-        tft.unloadFont();
-    } else {
-        tft.fillScreen(0x0000);
-        drawHeader();
-        drawFooter();
-    }
-}
-
-void displaySetBTConnected(bool connected) {
-    if (connected == lastBTConnected) return;
-    lastBTConnected = connected;
-    drawHeader();
-}
+void displayUpdateParameter(Parameter param, int16_t value) {}
+void displayShowMessage(const char* message) {}
+void displaySetStandby(bool standby) {}
+void displaySetBTConnected(bool connected) {}
