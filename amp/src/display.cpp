@@ -12,9 +12,14 @@ static const char* inputNames[] = {"Bluetooth", "Computer", "TV Box", "AUX"};
 static const char* inputImages[] = {"/bt_.bmp", "/pc_.bmp", "/tv_.bmp", "/aux_.bmp"};
 
 static AudioInput lastInput = (AudioInput)255;
-static uint8_t lastVolume = 255;
 
-static void drawVolumeBar(uint8_t volume) {
+static bool showTempMessage = false;
+static char tempLabel[20] = {0};
+static uint32_t tempMessageTimeout = 0;
+
+static const int CONTENT_CX = 175;
+
+static void drawBar(int16_t value, int16_t maxVal) {
     int barX = 290;
     int barY = 20;
     int barW = 20;
@@ -22,7 +27,10 @@ static void drawVolumeBar(uint8_t volume) {
     
     tft.fillRect(barX, barY, barW, barH, 0x18E3);
     
-    int fillH = (volume * barH) / 63;
+    int32_t fillH = ((int32_t)value * barH) / maxVal;
+    if (fillH < 0) fillH = 0;
+    if (fillH > barH) fillH = barH;
+    
     int fillY = barY + barH - fillH;
     tft.fillRect(barX, fillY, barW, fillH, 0x001F);
     tft.drawRect(barX, barY, barW, barH, 0xFFFF);
@@ -51,7 +59,7 @@ static void drawInputImage() {
     uint16_t bitsPerPixel = *(uint16_t*)&header[28];
     int32_t dataOffset = *(int32_t*)&header[10];
     
-    int16_t drawX = 60 + (230 - bmpWidth) / 2;
+    int16_t drawX = CONTENT_CX - bmpWidth / 2;
     int16_t drawY = 55 + (115 - bmpHeight) / 2;
     
     if (bitsPerPixel == 24) {
@@ -86,24 +94,19 @@ static void drawInputImage() {
     bmpFS.close();
 }
 
+static void drawText(const char* text, uint16_t color, int y) {
+    tft.loadFont(Arsenal_Bold40);
+    tft.setTextColor(color);
+    uint16_t w = tft.textWidth(text);
+    tft.setCursor(CONTENT_CX - w / 2, y);
+    tft.print(text);
+    tft.unloadFont();
+}
+
 static void drawInputName() {
     if (lastInput >= INPUT_COUNT) return;
-    
-    int nameX = 60;
-    int nameY = 10;
-    int nameW = 230;
-    
-    tft.fillRect(nameX, nameY, nameW, 45, 0x0000);
-    
-    tft.loadFont(Arsenal_Bold40);
-    tft.setTextColor(0xFFFF);
-    
-    const char* name = inputNames[lastInput];
-    int len = strlen(name);
-    int textX = nameX + (nameW - len * 22) / 2;
-    tft.setCursor(max(nameX, textX), nameY);
-    tft.print(name);
-    tft.unloadFont();
+    tft.fillRect(60, 10, 230, 45, 0x0000);
+    drawText(inputNames[lastInput], 0xFFFF, 10);
 }
 
 static void drawInputButtons() {
@@ -150,7 +153,7 @@ void displayInit() {
     drawInputButtons();
     drawInputName();
     drawInputImage();
-    drawVolumeBar(0);
+    drawBar(0, 63);
     
     DEBUG_PRINTLN("[DISPLAY] Ініціалізовано ST7789 320x170");
 }
@@ -158,18 +161,36 @@ void displayInit() {
 void displayUpdateInput(AudioInput input) {
     if (input == lastInput) return;
     lastInput = input;
+    showTempMessage = false;
     drawInputButtons();
     drawInputName();
     drawInputImage();
 }
 
-void displayUpdateVolume(uint8_t volume) {
-    if (volume == lastVolume) return;
-    lastVolume = volume;
-    drawVolumeBar(volume);
+void displayUpdateValue(int16_t value, int16_t maxVal) {
+    drawBar(value, maxVal);
 }
 
-void displayUpdateParameter(Parameter param, int16_t value) {}
-void displayShowMessage(const char* message) {}
+void displayShowParam(const char* label, int16_t value, uint32_t timeoutMs) {
+    showTempMessage = true;
+    strncpy(tempLabel, label, sizeof(tempLabel) - 1);
+    tempLabel[sizeof(tempLabel) - 1] = '\0';
+    tempMessageTimeout = millis() + timeoutMs;
+    
+    tft.fillRect(60, 10, 230, 45, 0x0000);
+    
+    char buf[30];
+    snprintf(buf, sizeof(buf), "%s %d", label, value);
+    drawText(buf, 0x07FF, 10);
+}
+
+void displayLoop() {
+    if (showTempMessage && millis() > tempMessageTimeout) {
+        showTempMessage = false;
+        drawInputName();
+        drawInputImage();
+    }
+}
+
 void displaySetStandby(bool standby) {}
 void displaySetBTConnected(bool connected) {}

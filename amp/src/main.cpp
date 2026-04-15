@@ -209,7 +209,8 @@ void handleInputEvent(InputEvent event) {
                     if (newVol > 63) newVol = 63;
                     tda7318SetVolume(newVol);
                     Serial.println("[Encoder] Гучність: " + String(newVol));
-                    displayUpdateVolume(newVol);
+                    displayUpdateValue(newVol, 63);
+                    displayShowParam("Vol.", newVol, 10000);
                     break;
                 }
                 case PARAM_BASS: {
@@ -219,7 +220,8 @@ void handleInputEvent(InputEvent event) {
                     if (newBass > BASS_MAX) newBass = BASS_MAX;
                     tda7318SetBass(newBass);
                     Serial.println("[Encoder] НЧ: " + String(newBass));
-                    displayUpdateParameter(param, newBass);
+                    displayUpdateValue(newBass - BASS_MIN, BASS_MAX - BASS_MIN);
+                    displayShowParam("Bass", newBass, 10000);
                     break;
                 }
                 case PARAM_TREBLE: {
@@ -229,7 +231,8 @@ void handleInputEvent(InputEvent event) {
                     if (newTreble > TREBLE_MAX) newTreble = TREBLE_MAX;
                     tda7318SetTreble(newTreble);
                     Serial.println("[Encoder] ВЧ: " + String(newTreble));
-                    displayUpdateParameter(param, newTreble);
+                    displayUpdateValue(newTreble - TREBLE_MIN, TREBLE_MAX - TREBLE_MIN);
+                    displayShowParam("Treble", newTreble, 10000);
                     break;
                 }
                 case PARAM_BALANCE: {
@@ -239,7 +242,8 @@ void handleInputEvent(InputEvent event) {
                     if (newBalance > BALANCE_MAX) newBalance = BALANCE_MAX;
                     tda7318SetBalance(newBalance);
                     Serial.println("[Encoder] Баланс: " + String(newBalance));
-                    displayUpdateParameter(param, newBalance);
+                    displayUpdateValue(newBalance - BALANCE_MIN, BALANCE_MAX - BALANCE_MIN);
+                    displayShowParam("Bal.", newBalance, 10000);
                     break;
                 }
                 case PARAM_GAIN: {
@@ -249,7 +253,8 @@ void handleInputEvent(InputEvent event) {
                     if (newGain > 3) newGain = 3;
                     tda7318SetGain(newGain);
                     Serial.println("[Encoder] Підсилення: " + String(newGain));
-                    displayUpdateParameter(param, newGain);
+                    displayUpdateValue(newGain, 3);
+                    displayShowParam("Gain", newGain, 10000);
                     break;
                 }
             }
@@ -261,7 +266,20 @@ void handleInputEvent(InputEvent event) {
             Parameter next = (Parameter)((current + 1) % PARAM_COUNT);
             inputSetParameter(next);
             Serial.println("[Encoder] Параметр: " + String(next) + " - " + inputGetParameterName());
-            displayUpdateParameter(next, 0);
+            
+            const char* paramLabels[] = {"Vol.", "Bass", "Treble", "Bal.", "Gain"};
+            int16_t displayVal = 0;
+            int16_t barVal = 0;
+            int16_t maxVal = 63;
+            switch (next) {
+                case PARAM_VOLUME: displayVal = tda7318GetVolume(); barVal = displayVal; maxVal = 63; break;
+                case PARAM_BASS: displayVal = tda7318GetBass(); barVal = displayVal - BASS_MIN; maxVal = BASS_MAX - BASS_MIN; break;
+                case PARAM_TREBLE: displayVal = tda7318GetTreble(); barVal = displayVal - TREBLE_MIN; maxVal = TREBLE_MAX - TREBLE_MIN; break;
+                case PARAM_BALANCE: displayVal = tda7318GetBalance(); barVal = displayVal - BALANCE_MIN; maxVal = BALANCE_MAX - BALANCE_MIN; break;
+                case PARAM_GAIN: displayVal = tda7318GetGain(); barVal = displayVal; maxVal = 3; break;
+            }
+            displayUpdateValue(barVal, maxVal);
+            displayShowParam(paramLabels[next], displayVal, 10000);
             break;
         }
         
@@ -281,7 +299,7 @@ void handleInputEvent(InputEvent event) {
                         tda7318SetInput(prev);
                         Serial.println("[Input] Вхід: " + String(prev));
                         displayUpdateInput(prev);
-                        displayUpdateVolume(tda7318GetVolume());
+                        displayUpdateValue(tda7318GetVolume(), 63);
                     }
                     break;
                 case BTN_FUNC_DOWN:
@@ -292,7 +310,7 @@ void handleInputEvent(InputEvent event) {
                         tda7318SetInput(next);
                         Serial.println("[Input] Вхід: " + String(next));
                         displayUpdateInput(next);
-                        displayUpdateVolume(tda7318GetVolume());
+                        displayUpdateValue(tda7318GetVolume(), 63);
                     }
                     break;
                 case BTN_FUNC_LEFT:
@@ -395,9 +413,8 @@ void setup() {
     displayInit();
     
     // Показати початковий стан на дисплеї
-    displayUpdateVolume(tda7318GetVolume());
     displayUpdateInput(tda7318GetInput());
-    displayUpdateParameter(inputGetParameter(), 0);
+    displayUpdateValue(tda7318GetVolume(), 63);
     
     lastEncoderActivity = millis();
     
@@ -424,11 +441,14 @@ void loop() {
         }
     }
     
-    // 3. Скидання параметра на гучність після 10с неактивності
+    // 3. Оновлення дисплея (перевірка таймауту повідомлення)
+    displayLoop();
+    
+    // 4. Скидання параметра на гучність після 10с неактивності
     if (inputGetParameter() != PARAM_VOLUME) {
         if (millis() - lastEncoderActivity > ENCODER_TIMEOUT_MS) {
             inputSetParameter(PARAM_VOLUME);
-            displayUpdateParameter(PARAM_VOLUME, 0);
+            displayUpdateValue(tda7318GetVolume(), 63);
             Serial.println("[INPUT] Таймаут - скинуто на гучність");
         }
     }

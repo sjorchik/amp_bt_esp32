@@ -5,11 +5,11 @@
 #include "config.h"
 
 void displayInit();
-void displayUpdateVolume(uint8_t volume);
 void displayUpdateInput(AudioInput input);
-void displayUpdateParameter(Parameter param, int16_t value);
-void displayShowMessage(const char* message);
+void displayUpdateValue(int16_t value, int16_t maxVal);
+void displayShowParam(const char* label, int16_t value, uint32_t timeoutMs);
 void displaySetStandby(bool standby);
 void displaySetBTConnected(bool connected);
+void displayLoop();
 
 #endif
