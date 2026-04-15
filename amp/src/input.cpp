@@ -307,51 +307,21 @@ InputEvent inputPollIR() {
     if (irReceiver->decode(&irResults)) {
         uint32_t irCode = irResults.value;
         
-        // Витягуємо команду (молодші 6 біт для RC-5)
-        uint8_t command = irCode & 0x3F;
+        event.type = EVENT_IR_COMMAND;
         
-        // Карта RC-5 команд -> коди кнопок
-        switch (command) {
-            case 0x0C:  // PWR
-                event.type = EVENT_IR_COMMAND;
-                event.value = BTN_FUNC_PWR;
-                break;
-            case 0x10:  // UP
-                event.type = EVENT_IR_COMMAND;
-                event.value = BTN_FUNC_UP;
-                break;
-            case 0x11:  // DOWN
-                event.type = EVENT_IR_COMMAND;
-                event.value = BTN_FUNC_DOWN;
-                break;
-            case 0x12:  // LEFT
-                event.type = EVENT_IR_COMMAND;
-                event.value = BTN_FUNC_LEFT;
-                break;
-            case 0x13:  // OK/ENTER
-                event.type = EVENT_IR_COMMAND;
-                event.value = BTN_FUNC_OK;
-                break;
-            case 0x14:  // RIGHT
-                event.type = EVENT_IR_COMMAND;
-                event.value = BTN_FUNC_RIGHT;
-                break;
-            case 0x15:  // VOL+
-                event.type = EVENT_IR_COMMAND;
-                event.value = 100;  // Спеціальний код для vol+
-                break;
-            case 0x16:  // VOL-
-                event.type = EVENT_IR_COMMAND;
-                event.value = 101;  // Спеціальний код для vol-
-                break;
-            case 0x0D:  // MUTE
-                event.type = EVENT_IR_COMMAND;
-                event.value = 102;  // Спеціальний код для mute
-                break;
-            default:
-                DEBUG_PRINTLN("[IR] Невідома команда RC-5: 0x" + String(command, HEX));
-                break;
+        if (irCode == 0x2F || irCode == 0x82F) {
+            event.value = 121; // TRE-
+        } else if (irCode == 0x102F || irCode == 0x182F) {
+            event.value = 131; // BAL-
+        } else if (irCode == 0x10F2 || irCode == 0x18F2) {
+            event.value = 111; // BASS-
+        } else if (irCode == 0x10F3 || irCode == 0x18F3) {
+            event.value = 141; // GAIN-
+        } else {
+            event.value = (int16_t)(irCode & 0xFFFF);
         }
+        
+        DEBUG_PRINTLN("[IR] Повний код: 0x" + String(irCode, HEX) + " | value=" + String(event.value));
         
         event.timestamp = millis();
         irReceiver->resume();

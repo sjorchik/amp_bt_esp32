@@ -4,6 +4,7 @@
 #include <FS.h>
 #include "fonts/Arsenal_Bold40.h"
 #include "fonts/Arsenal_Bold25.h"
+#include "tda7318.h"
 
 static TFT_eSPI tft = TFT_eSPI();
 
@@ -12,6 +13,7 @@ static const char* inputNames[] = {"Bluetooth", "Computer", "TV Box", "AUX"};
 static const char* inputImages[] = {"/bt_.bmp", "/pc_.bmp", "/tv_.bmp", "/aux_.bmp"};
 
 static AudioInput lastInput = (AudioInput)255;
+static bool isMuted = false;
 
 static bool showTempMessage = false;
 static char tempLabel[20] = {0};
@@ -19,7 +21,7 @@ static uint32_t tempMessageTimeout = 0;
 
 static const int CONTENT_CX = 175;
 
-static void drawBar(int16_t value, int16_t maxVal) {
+static void drawBar(int16_t value, int16_t maxVal, uint16_t fillColor) {
     int barX = 290;
     int barY = 20;
     int barW = 20;
@@ -32,7 +34,7 @@ static void drawBar(int16_t value, int16_t maxVal) {
     if (fillH > barH) fillH = barH;
     
     int fillY = barY + barH - fillH;
-    tft.fillRect(barX, fillY, barW, fillH, 0x001F);
+    tft.fillRect(barX, fillY, barW, fillH, fillColor);
     tft.drawRect(barX, barY, barW, barH, 0xFFFF);
 }
 
@@ -153,7 +155,7 @@ void displayInit() {
     drawInputButtons();
     drawInputName();
     drawInputImage();
-    drawBar(0, 63);
+    drawBar(0, 63, 0x001F);
     
     DEBUG_PRINTLN("[DISPLAY] Ініціалізовано ST7789 320x170");
 }
@@ -168,7 +170,14 @@ void displayUpdateInput(AudioInput input) {
 }
 
 void displayUpdateValue(int16_t value, int16_t maxVal) {
-    drawBar(value, maxVal);
+    uint16_t color = isMuted ? 0xF800 : 0x001F;
+    drawBar(value, maxVal, color);
+}
+
+void displaySetMute(bool muted) {
+    isMuted = muted;
+    uint16_t color = muted ? 0xF800 : 0x001F;
+    drawBar(tda7318GetVolume(), 63, color);
 }
 
 void displayShowParam(const char* label, int16_t value, uint32_t timeoutMs) {
@@ -189,8 +198,20 @@ void displayLoop() {
         showTempMessage = false;
         drawInputName();
         drawInputImage();
+        drawBar(tda7318GetVolume(), 63, isMuted ? 0xF800 : 0x001F);
     }
 }
 
-void displaySetStandby(bool standby) {}
+void displaySetStandby(bool standby) {
+    if (standby) {
+        tft.fillScreen(0x0000);
+        digitalWrite(TFT_BL, LOW);
+    } else {
+        digitalWrite(TFT_BL, HIGH);
+        drawInputButtons();
+        drawInputName();
+        drawInputImage();
+        drawBar(0, 63, 0x001F);
+    }
+}
 void displaySetBTConnected(bool connected) {}
