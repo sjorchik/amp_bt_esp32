@@ -47,4 +47,10 @@ InputEvent inputPollEncoder();
 /** @brief Обробка кнопок */
 InputEvent inputPollButtons();
 
+/** @brief Обробка події вводу (енкодер, кнопки, IR) */
+void handleInputEvent(InputEvent event);
+
+/** @brief Перевірити чи активний режим очікування */
+bool inputIsStandby();
+
 #endif // INPUT_H
