@@ -6,6 +6,21 @@
 #include "config.h"
 #include "tda7318.h"
 #include "display.h"
+#include "bt_audio.h"
+
+static void handleInputChange(AudioInput newInput) {
+    AudioInput oldInput = tda7318GetInput();
+    tda7318SetInput(newInput);
+    
+    if (newInput == INPUT_BLUETOOTH && oldInput != INPUT_BLUETOOTH) {
+        btAudioStart();
+    } else if (newInput != INPUT_BLUETOOTH && oldInput == INPUT_BLUETOOTH) {
+        btAudioEnd();
+    }
+    
+    displayUpdateInput(newInput);
+    displayUpdateValue(tda7318GetVolume(), 63);
+}
 
 // ============================================================================
 // БІБЛІОТЕКИ
@@ -365,12 +380,17 @@ static void toggleStandby() {
         Serial.println("[SYSTEM] Режим очікування увімкнено");
         tda7318SetMute(true);
         displaySetStandby(true);
+        btAudioEnd();
     } else {
         Serial.println("[SYSTEM] Режим очікування вимкнено");
         tda7318SetMute(false);
         displaySetStandby(false);
         displayUpdateInput(tda7318GetInput());
         displayUpdateValue(tda7318GetVolume(), 63);
+        
+        if (tda7318GetInput() == INPUT_BLUETOOTH) {
+            btAudioStart();
+        }
     }
 }
 
@@ -480,10 +500,8 @@ void handleInputEvent(InputEvent event) {
                     {
                         AudioInput current = tda7318GetInput();
                         AudioInput prev = (AudioInput)((current == 0) ? (INPUT_COUNT - 1) : (current - 1));
-                        tda7318SetInput(prev);
+                        handleInputChange(prev);
                         Serial.println("[Input] Вхід: " + String(prev));
-                        displayUpdateInput(prev);
-                        displayUpdateValue(tda7318GetVolume(), 63);
                     }
                     break;
                 case BTN_FUNC_DOWN:
@@ -491,20 +509,21 @@ void handleInputEvent(InputEvent event) {
                     {
                         AudioInput current = tda7318GetInput();
                         AudioInput next = (AudioInput)((current + 1) % INPUT_COUNT);
-                        tda7318SetInput(next);
+                        handleInputChange(next);
                         Serial.println("[Input] Вхід: " + String(next));
-                        displayUpdateInput(next);
-                        displayUpdateValue(tda7318GetVolume(), 63);
                     }
                     break;
                 case BTN_FUNC_LEFT:
                     Serial.println("LEFT (prev track)");
+                    btAudioPrev();
                     break;
                 case BTN_FUNC_OK:
                     Serial.println("OK (play/pause)");
+                    btAudioPlayPause();
                     break;
                 case BTN_FUNC_RIGHT:
                     Serial.println("RIGHT (next track)");
+                    btAudioNext();
                     break;
                 default:
                     Serial.println("Unknown (" + String(event.value) + ")");
@@ -522,14 +541,14 @@ void handleInputEvent(InputEvent event) {
             
             int16_t cmd = event.value;
             
-            if (cmd == 100 || cmd == 0x10 || cmd == 0x810 || cmd == 0x1010) {
+            if (cmd == 100 || cmd == 0x10 || cmd == 0x810) {
                 uint8_t vol = tda7318GetVolume();
                 if (vol < 63) tda7318SetVolume(vol + 1);
                 vol = tda7318GetVolume();
                 Serial.println("[IR] VOL+");
                 displayUpdateValue(vol, 63);
                 displayShowParam("Volume", vol, 10000);
-            } else if (cmd == 101 || cmd == 0x11 || cmd == 0x811 || cmd == 0x1011) {
+            } else if (cmd == 101 || cmd == 0x11 || cmd == 0x811) {
                 uint8_t vol = tda7318GetVolume();
                 if (vol > 0) tda7318SetVolume(vol - 1);
                 vol = tda7318GetVolume();
@@ -541,6 +560,14 @@ void handleInputEvent(InputEvent event) {
                 tda7318SetMute(muted);
                 Serial.println("[IR] MUTE");
                 displaySetMute(muted);
+            } else if (cmd == 0x1010 || cmd == 0x1810) {
+                btAudioPlayPause();
+            } else if (cmd == 0x1011 || cmd == 0x1811) {
+                btAudioStop();
+            } else if (cmd == 0x1015 || cmd == 0x1815) {
+                btAudioPrev();
+            } else if (cmd == 0x1016 || cmd == 0x1816) {
+                btAudioNext();
             } else if (cmd == 111 || cmd == 0x32 || cmd == 0x832 || cmd == 0x1032 || cmd == 0x10F2 || cmd == 0x18F2) {
                 int8_t bass = tda7318GetBass();
                 if (bass > BASS_MIN) tda7318SetBass(bass - 1);
@@ -598,39 +625,27 @@ void handleInputEvent(InputEvent event) {
                 displayUpdateValue(balance - BALANCE_MIN, BALANCE_MAX - BALANCE_MIN);
                 displayShowParam("Balance", balance, 10000);
             } else if (cmd == 0x102B || cmd == 0x182B) {
-                tda7318SetInput(INPUT_BLUETOOTH);
+                handleInputChange(INPUT_BLUETOOTH);
                 Serial.println("[IR] INPUT BLUETOOTH");
-                displayUpdateInput(INPUT_BLUETOOTH);
-                displayUpdateValue(tda7318GetVolume(), 63);
             } else if (cmd == 0x102C || cmd == 0x182C) {
-                tda7318SetInput(INPUT_COMPUTER);
+                handleInputChange(INPUT_COMPUTER);
                 Serial.println("[IR] INPUT COMPUTER");
-                displayUpdateInput(INPUT_COMPUTER);
-                displayUpdateValue(tda7318GetVolume(), 63);
             } else if (cmd == 0x102D || cmd == 0x182D) {
-                tda7318SetInput(INPUT_TV_BOX);
+                handleInputChange(INPUT_TV_BOX);
                 Serial.println("[IR] INPUT TV BOX");
-                displayUpdateInput(INPUT_TV_BOX);
-                displayUpdateValue(tda7318GetVolume(), 63);
             } else if (cmd == 0x102E || cmd == 0x182E) {
-                tda7318SetInput(INPUT_AUX);
+                handleInputChange(INPUT_AUX);
                 Serial.println("[IR] INPUT AUX");
-                displayUpdateInput(INPUT_AUX);
-                displayUpdateValue(tda7318GetVolume(), 63);
             } else if (cmd == 0x20 || cmd == 0x820) {
                 AudioInput current = tda7318GetInput();
                 AudioInput prev = (AudioInput)((current == 0) ? (INPUT_COUNT - 1) : (current - 1));
-                tda7318SetInput(prev);
+                handleInputChange(prev);
                 Serial.println("[IR] PREV INPUT");
-                displayUpdateInput(prev);
-                displayUpdateValue(tda7318GetVolume(), 63);
             } else if (cmd == 0x21 || cmd == 0x821) {
                 AudioInput current = tda7318GetInput();
                 AudioInput next = (AudioInput)((current + 1) % INPUT_COUNT);
-                tda7318SetInput(next);
+                handleInputChange(next);
                 Serial.println("[IR] NEXT INPUT");
-                displayUpdateInput(next);
-                displayUpdateValue(tda7318GetVolume(), 63);
             } else if (cmd == 103 || cmd == 0x0C || cmd == 0x80C || cmd == 0x100C) {
                 toggleStandby();
             }

@@ -15,6 +15,7 @@
 #include "input.h"
 #include "display.h"
 #include "terminal.h"
+#include "bt_audio.h"
 
 // ============================================================================
 // SETUP
@@ -63,6 +64,10 @@ void setup() {
     // Ініціалізація терміналу
     terminalInit();
     
+    // Ініціалізація Bluetooth Audio
+    Serial.println("[BT_AUDIO] Ініціалізація...");
+    btAudioInit();
+    
     // Показати початковий стан на дисплеї
     displayUpdateInput(tda7318GetInput());
     displayUpdateValue(tda7318GetVolume(), 63);
@@ -79,6 +84,7 @@ void setup() {
 // ============================================================================
 
 void loop() {
+    btAudioLoop();
     terminalHandleInput();
     
     InputEvent event = inputPoll();
