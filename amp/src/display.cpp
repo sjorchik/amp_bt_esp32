@@ -14,6 +14,11 @@ static const char* inputImages[] = {"/bt_.bmp", "/pc_.bmp", "/tv_.bmp", "/aux_.b
 
 static AudioInput lastInput = (AudioInput)255;
 static bool isMuted = false;
+static bool btConnected = false;
+static bool btIsPlaying = false;
+static char btArtist[64] = {0};
+static char btTitle[64] = {0};
+static char btAlbum[64] = {0};
 
 static bool showTempMessage = false;
 static char tempLabel[20] = {0};
@@ -38,10 +43,66 @@ static void drawBar(int16_t value, int16_t maxVal, uint16_t fillColor) {
     tft.drawRect(barX, barY, barW, barH, 0xFFFF);
 }
 
+static void drawText(const char* text, uint16_t color, int y) {
+    tft.loadFont(Arsenal_Bold40);
+    tft.setTextColor(color);
+    uint16_t w = tft.textWidth(text);
+    tft.setCursor(CONTENT_CX - w / 2, y);
+    tft.print(text);
+    tft.unloadFont();
+}
+
+static void drawTrimmedText(const char* text, int centerX, int y, int maxWidth, uint16_t color) {
+    if (!text || strlen(text) == 0) return;
+    
+    tft.loadFont(Arsenal_Bold25);
+    uint16_t textW = tft.textWidth(text);
+    
+    if (textW <= maxWidth) {
+        tft.setTextColor(color);
+        tft.setCursor(centerX - textW / 2, y);
+        tft.print(text);
+    } else {
+        char trimmed[64];
+        strncpy(trimmed, text, sizeof(trimmed) - 4);
+        trimmed[sizeof(trimmed) - 4] = '\0';
+        
+        while (tft.textWidth(trimmed) + tft.textWidth("...") > maxWidth && strlen(trimmed) > 3) {
+            trimmed[strlen(trimmed) - 1] = '\0';
+        }
+        strcat(trimmed, "...");
+        
+        tft.setTextColor(color);
+        tft.setCursor(60, y);
+        tft.print(trimmed);
+    }
+    tft.unloadFont();
+}
+
 static void drawInputImage() {
     if (lastInput >= INPUT_COUNT) return;
     
     tft.fillRect(60, 55, 230, 115, 0x0000);
+    
+    if (lastInput == INPUT_BLUETOOTH && btConnected) {
+        if (strlen(btTitle) > 0 || strlen(btArtist) > 0 || strlen(btAlbum) > 0) {
+            uint16_t albumColor = btIsPlaying ? 0x9772 : 0xF800;
+            uint16_t artistColor = btIsPlaying ? 0xFFE0  : 0xF800;
+            uint16_t titleColor = btIsPlaying ? 0x867D  : 0xF800;
+            
+            drawTrimmedText(btAlbum, CONTENT_CX, 60, 230, albumColor);
+            drawTrimmedText(btArtist, CONTENT_CX, 95, 230, artistColor);
+            drawTrimmedText(btTitle, CONTENT_CX, 130, 230, titleColor);
+        } else {
+            tft.loadFont(Arsenal_Bold25);
+            tft.setTextColor(0x07FF);
+            uint16_t w = tft.textWidth("Connected");
+            tft.setCursor(CONTENT_CX - w / 2, 90);
+            tft.print("Connected");
+            tft.unloadFont();
+        }
+        return;
+    }
     
     const char* imgPath = inputImages[lastInput];
     fs::File bmpFS = SPIFFS.open(imgPath, "r");
@@ -94,15 +155,6 @@ static void drawInputImage() {
     }
     
     bmpFS.close();
-}
-
-static void drawText(const char* text, uint16_t color, int y) {
-    tft.loadFont(Arsenal_Bold40);
-    tft.setTextColor(color);
-    uint16_t w = tft.textWidth(text);
-    tft.setCursor(CONTENT_CX - w / 2, y);
-    tft.print(text);
-    tft.unloadFont();
 }
 
 static void drawInputName() {
@@ -214,4 +266,30 @@ void displaySetStandby(bool standby) {
         drawBar(0, 63, 0x001F);
     }
 }
-void displaySetBTConnected(bool connected) {}
+void displaySetBTConnected(bool connected) {
+    if (connected == btConnected) return;
+    btConnected = connected;
+    
+    if (lastInput == INPUT_BLUETOOTH) {
+        drawInputImage();
+    }
+}
+
+void displayUpdateBTTrackInfo(const char* artist, const char* title, const char* album) {
+    if (lastInput != INPUT_BLUETOOTH || !btConnected) return;
+    
+    if (artist) strncpy(btArtist, artist, sizeof(btArtist) - 1);
+    if (title) strncpy(btTitle, title, sizeof(btTitle) - 1);
+    if (album) strncpy(btAlbum, album, sizeof(btAlbum) - 1);
+    
+    drawInputImage();
+}
+
+void displaySetBTPlaying(bool playing) {
+    if (playing == btIsPlaying) return;
+    btIsPlaying = playing;
+    
+    if (lastInput == INPUT_BLUETOOTH && btConnected) {
+        drawInputImage();
+    }
+}

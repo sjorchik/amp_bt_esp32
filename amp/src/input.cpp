@@ -16,6 +16,7 @@ static void handleInputChange(AudioInput newInput) {
         btAudioStart();
     } else if (newInput != INPUT_BLUETOOTH && oldInput == INPUT_BLUETOOTH) {
         btAudioEnd();
+        btAudioClearMetadata();
     }
     
     displayUpdateInput(newInput);

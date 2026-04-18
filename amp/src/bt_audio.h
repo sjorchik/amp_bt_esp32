@@ -13,5 +13,6 @@ void btAudioPlayPause();
 void btAudioNext();
 void btAudioPrev();
 void btAudioStop();
+void btAudioClearMetadata();
 
 #endif

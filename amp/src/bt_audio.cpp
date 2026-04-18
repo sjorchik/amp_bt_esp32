@@ -2,6 +2,7 @@
 #include "config.h"
 #include "display.h"
 #include <driver/i2s.h>
+#include <cstring>
 #include <BluetoothA2DPSink.h>
 
 static BluetoothA2DPSink a2dp_sink;
@@ -16,6 +17,7 @@ static void connection_state_changed(esp_a2d_connection_state_t state, void* ptr
             isConnected = true;
             isPlaying = false;
             displaySetBTConnected(true);
+            btAudioClearMetadata();
             break;
         case ESP_A2D_CONNECTION_STATE_DISCONNECTED:
             Serial.println("[BT] Від'єднано");
@@ -30,15 +32,50 @@ static void connection_state_changed(esp_a2d_connection_state_t state, void* ptr
 }
 
 static void avrc_metadata_callback(uint8_t id, const uint8_t* text) {
+    static char artist[64] = {0};
+    static char title[64] = {0};
+    static char album[64] = {0};
+    
+    const char* str = (const char*)text;
+    if (strcmp(str, "Not Provided") == 0 || strcmp(str, "UNKNOWN") == 0) return;
+    
     switch (id) {
         case ESP_AVRC_MD_ATTR_TITLE:
-            Serial.printf("[BT] Title: %s\n", text);
+            strncpy(title, str, sizeof(title) - 1);
+            Serial.printf("[BT] Title: %s\n", str);
+            displayUpdateBTTrackInfo(artist, title, album);
             break;
         case ESP_AVRC_MD_ATTR_ARTIST:
-            Serial.printf("[BT] Artist: %s\n", text);
+            strncpy(artist, str, sizeof(artist) - 1);
+            Serial.printf("[BT] Artist: %s\n", str);
+            displayUpdateBTTrackInfo(artist, title, album);
             break;
         case ESP_AVRC_MD_ATTR_ALBUM:
-            Serial.printf("[BT] Album: %s\n", text);
+            strncpy(album, str, sizeof(album) - 1);
+            Serial.printf("[BT] Album: %s\n", str);
+            displayUpdateBTTrackInfo(artist, title, album);
+            break;
+    }
+}
+
+static void avrc_playstatus_callback(esp_avrc_playback_stat_t playback) {
+    switch (playback) {
+        case ESP_AVRC_PLAYBACK_PLAYING:
+            isPlaying = true;
+            displaySetBTPlaying(true);
+            Serial.println("[BT] Status: Playing");
+            break;
+        case ESP_AVRC_PLAYBACK_PAUSED:
+            isPlaying = false;
+            displaySetBTPlaying(false);
+            Serial.println("[BT] Status: Paused");
+            break;
+        case ESP_AVRC_PLAYBACK_STOPPED:
+            isPlaying = false;
+            displaySetBTPlaying(false);
+            Serial.println("[BT] Status: Stopped");
+            break;
+        default:
             break;
     }
 }
@@ -57,6 +94,7 @@ void btAudioInit() {
     a2dp_sink.set_auto_reconnect(true);
     a2dp_sink.set_on_connection_state_changed(connection_state_changed);
     a2dp_sink.set_avrc_metadata_callback(avrc_metadata_callback);
+    a2dp_sink.set_avrc_rn_playstatus_callback(avrc_playstatus_callback);
     
     Serial.printf("[BT_AUDIO] I2S піни: BCK=%d, WS=%d, DOUT=%d\n", I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
     
@@ -98,11 +136,10 @@ void btAudioPlayPause() {
     if (isConnected) {
         if (isPlaying) {
             a2dp_sink.pause();
-            isPlaying = false;
+            displaySetBTPlaying(false);
             Serial.println("[BT] Pause");
         } else {
             a2dp_sink.play();
-            isPlaying = true;
             Serial.println("[BT] Play");
         }
     }
@@ -125,7 +162,13 @@ void btAudioPrev() {
 void btAudioStop() {
     if (isConnected) {
         a2dp_sink.stop();
-        isPlaying = false;
         Serial.println("[BT] Stop");
     }
+}
+
+void btAudioClearMetadata() {
+    displayUpdateBTTrackInfo("", "", "");
+    isPlaying = false;
+    displaySetBTPlaying(false);
+    Serial.println("[BT] Metadata cleared");
 }

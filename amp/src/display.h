@@ -11,6 +11,8 @@ void displayShowParam(const char* label, int16_t value, uint32_t timeoutMs);
 void displaySetStandby(bool standby);
 void displaySetMute(bool muted);
 void displaySetBTConnected(bool connected);
+void displayUpdateBTTrackInfo(const char* artist, const char* title, const char* album);
+void displaySetBTPlaying(bool playing);
 void displayLoop();
 
 #endif
