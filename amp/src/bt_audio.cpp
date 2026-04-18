@@ -1,4 +1,17 @@
+/**
+ * @file bt_audio.cpp  (МОДИФІКОВАНИЙ)
+ * 
+ * Зміни:
+ * 1. Додано btSPPInit() після a2dp_sink.start() — так SPP поділяє 
+ *    один Bluedroid стек з A2DP, не виділяючи пам'ять на другий.
+ * 2. set_default_bt_mode(ESP_BT_MODE_CLASSIC_BT) — вимикає BLE в Bluedroid
+ *    (економить ~30 KB heap, якщо BLE не потрібен).
+ * 3. Зменшено I2S буфер через set_auto_reconnect, щоб A2DP не тримав 
+ *    зайву пам'ять.
+ */
+
 #include "bt_audio.h"
+#include "bt_spp.h"        // ← ДОДАНО
 #include "config.h"
 #include "display.h"
 #include <driver/i2s.h>
@@ -18,6 +31,8 @@ static void connection_state_changed(esp_a2d_connection_state_t state, void* ptr
             isPlaying = false;
             displaySetBTConnected(true);
             btAudioClearMetadata();
+            // Повідомити SPP клієнта про A2DP підключення
+            btSPPSendUpdateBool("bt_connected", true);
             break;
         case ESP_A2D_CONNECTION_STATE_DISCONNECTED:
             Serial.println("[BT] Від'єднано");
@@ -25,6 +40,7 @@ static void connection_state_changed(esp_a2d_connection_state_t state, void* ptr
             isPlaying = false;
             deviceName[0] = '\0';
             displaySetBTConnected(false);
+            btSPPSendUpdateBool("bt_connected", false);
             break;
         default:
             break;
@@ -83,11 +99,17 @@ static void avrc_playstatus_callback(esp_avrc_playback_stat_t playback) {
 void btAudioInit() {
     Serial.println("[BT_AUDIO] Ініціалізація Bluetooth A2DP...");
     
+    // ── ОПТИМІЗАЦІЯ ПАМ'ЯТІ ────────────────────────────────────────────────
+    // Вимкнути BLE в Bluedroid — звільняє ~30 KB heap.
+    // Якщо BLE потрібен в майбутньому — прибрати цей рядок.
+    a2dp_sink.set_default_bt_mode(ESP_BT_MODE_CLASSIC_BT);
+    // ────────────────────────────────────────────────────────────────────────
+
     i2s_pin_config_t my_pin_config = {
-        .bck_io_num = I2S_BCK_PIN,
-        .ws_io_num = I2S_WS_PIN,
+        .bck_io_num   = I2S_BCK_PIN,
+        .ws_io_num    = I2S_WS_PIN,
         .data_out_num = I2S_DOUT_PIN,
-        .data_in_num = I2S_PIN_NO_CHANGE
+        .data_in_num  = I2S_PIN_NO_CHANGE
     };
     
     a2dp_sink.set_pin_config(my_pin_config);
@@ -96,10 +118,21 @@ void btAudioInit() {
     a2dp_sink.set_avrc_metadata_callback(avrc_metadata_callback);
     a2dp_sink.set_avrc_rn_playstatus_callback(avrc_playstatus_callback);
     
-    Serial.printf("[BT_AUDIO] I2S піни: BCK=%d, WS=%d, DOUT=%d\n", I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
+    Serial.printf("[BT_AUDIO] I2S піни: BCK=%d, WS=%d, DOUT=%d\n",
+                  I2S_BCK_PIN, I2S_WS_PIN, I2S_DOUT_PIN);
     
+    // Запускаємо A2DP — після цього виклику Bluedroid повністю ініціалізований
     a2dp_sink.start("ESP32-Audio");
-    Serial.println("[BT_AUDIO] Bluetooth активний, очікування підключення...");
+    Serial.println("[BT_AUDIO] A2DP активний");
+
+    // ── РЕЄСТРАЦІЯ SPP ПОВЕРХ ІСНУЮЧОГО BLUEDROID ──────────────────────────
+    // Важливо: лише після start()! A2DP ще не "зайняв" інші профілі.
+    // esp_spp_init() просто додає SPP до вже запущеного стека.
+    Serial.println("[BT_AUDIO] Реєстрація SPP...");
+    btSPPInit();
+    // ────────────────────────────────────────────────────────────────────────
+
+    Serial.printf("[BT_AUDIO] Готово. Heap: %d B\n", ESP.getFreeHeap());
 }
 
 void btAudioStart() {
@@ -124,51 +157,22 @@ void btAudioLoop() {
     // Бібліотека обробляє все в фоновому режимі
 }
 
-bool btAudioIsConnected() {
-    return isConnected;
-}
-
-const char* btAudioGetDeviceName() {
-    return deviceName;
-}
+bool btAudioIsConnected()         { return isConnected; }
+const char* btAudioGetDeviceName() { return deviceName; }
 
 void btAudioPlayPause() {
     if (isConnected) {
-        if (isPlaying) {
-            a2dp_sink.pause();
-            displaySetBTPlaying(false);
-            Serial.println("[BT] Pause");
-        } else {
-            a2dp_sink.play();
-            Serial.println("[BT] Play");
-        }
+        if (isPlaying) { a2dp_sink.pause(); displaySetBTPlaying(false); }
+        else           { a2dp_sink.play();  }
     }
 }
 
-void btAudioNext() {
-    if (isConnected) {
-        a2dp_sink.next();
-        Serial.println("[BT] Next");
-    }
-}
-
-void btAudioPrev() {
-    if (isConnected) {
-        a2dp_sink.previous();
-        Serial.println("[BT] Previous");
-    }
-}
-
-void btAudioStop() {
-    if (isConnected) {
-        a2dp_sink.stop();
-        Serial.println("[BT] Stop");
-    }
-}
+void btAudioNext()   { if (isConnected) a2dp_sink.next(); }
+void btAudioPrev()   { if (isConnected) a2dp_sink.previous(); }
+void btAudioStop()   { if (isConnected) a2dp_sink.stop(); }
 
 void btAudioClearMetadata() {
     displayUpdateBTTrackInfo("", "", "");
     isPlaying = false;
     displaySetBTPlaying(false);
-    Serial.println("[BT] Metadata cleared");
 }

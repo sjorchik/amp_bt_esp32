@@ -7,6 +7,7 @@
 #include "tda7318.h"
 #include "display.h"
 #include "bt_audio.h"
+#include "bt_spp.h"
 
 static void handleInputChange(AudioInput newInput) {
     AudioInput oldInput = tda7318GetInput();
@@ -21,6 +22,14 @@ static void handleInputChange(AudioInput newInput) {
     
     displayUpdateInput(newInput);
     displayUpdateValue(tda7318GetVolume(), 63);
+    
+    btSPPSendUpdate("input", (int)newInput);
+    btSPPSendUpdate("volume", tda7318GetVolume());
+    btSPPSendUpdate("bass", tda7318GetBass());
+    btSPPSendUpdate("treble", tda7318GetTreble());
+    btSPPSendUpdate("balance", tda7318GetBalance());
+    btSPPSendUpdate("gain", tda7318GetGain());
+    btSPPSendUpdateBool("mute", tda7318IsMuted());
 }
 
 // ============================================================================
@@ -415,6 +424,7 @@ void handleInputEvent(InputEvent event) {
                     Serial.println("[Encoder] Гучність: " + String(newVol));
                     displayUpdateValue(newVol, 63);
                     displayShowParam("Volume", newVol, 10000);
+                    btSPPSendUpdate("volume", newVol);
                     break;
                 }
                 case PARAM_BASS: {
@@ -426,6 +436,7 @@ void handleInputEvent(InputEvent event) {
                     Serial.println("[Encoder] НЧ: " + String(newBass));
                     displayUpdateValue(newBass - BASS_MIN, BASS_MAX - BASS_MIN);
                     displayShowParam("Bass", newBass, 10000);
+                    btSPPSendUpdate("bass", newBass);
                     break;
                 }
                 case PARAM_TREBLE: {
@@ -437,6 +448,7 @@ void handleInputEvent(InputEvent event) {
                     Serial.println("[Encoder] ВЧ: " + String(newTreble));
                     displayUpdateValue(newTreble - TREBLE_MIN, TREBLE_MAX - TREBLE_MIN);
                     displayShowParam("Treble", newTreble, 10000);
+                    btSPPSendUpdate("treble", newTreble);
                     break;
                 }
                 case PARAM_BALANCE: {
@@ -448,6 +460,7 @@ void handleInputEvent(InputEvent event) {
                     Serial.println("[Encoder] Баланс: " + String(newBalance));
                     displayUpdateValue(newBalance - BALANCE_MIN, BALANCE_MAX - BALANCE_MIN);
                     displayShowParam("Balance", newBalance, 10000);
+                    btSPPSendUpdate("balance", newBalance);
                     break;
                 }
                 case PARAM_GAIN: {
@@ -459,6 +472,7 @@ void handleInputEvent(InputEvent event) {
                     Serial.println("[Encoder] Підсилення: " + String(newGain));
                     displayUpdateValue(newGain, 3);
                     displayShowParam("Gain", newGain, 10000);
+                    btSPPSendUpdate("gain", newGain);
                     break;
                 }
             }
@@ -549,6 +563,7 @@ void handleInputEvent(InputEvent event) {
                 Serial.println("[IR] VOL+");
                 displayUpdateValue(vol, 63);
                 displayShowParam("Volume", vol, 10000);
+                btSPPSendUpdate("volume", vol);
             } else if (cmd == 101 || cmd == 0x11 || cmd == 0x811) {
                 uint8_t vol = tda7318GetVolume();
                 if (vol > 0) tda7318SetVolume(vol - 1);
@@ -556,11 +571,13 @@ void handleInputEvent(InputEvent event) {
                 Serial.println("[IR] VOL-");
                 displayUpdateValue(vol, 63);
                 displayShowParam("Volume", vol, 10000);
+                btSPPSendUpdate("volume", vol);
             } else if (cmd == 102 || cmd == 0x0D || cmd == 0x80D || cmd == 0x100D) {
                 bool muted = !tda7318IsMuted();
                 tda7318SetMute(muted);
                 Serial.println("[IR] MUTE");
                 displaySetMute(muted);
+                btSPPSendUpdateBool("mute", muted);
             } else if (cmd == 0x1010 || cmd == 0x1810) {
                 btAudioPlayPause();
             } else if (cmd == 0x1011 || cmd == 0x1811) {
@@ -576,6 +593,7 @@ void handleInputEvent(InputEvent event) {
                 Serial.println("[IR] BASS-");
                 displayUpdateValue(bass - BASS_MIN, BASS_MAX - BASS_MIN);
                 displayShowParam("Bass", bass, 10000);
+                btSPPSendUpdate("bass", bass);
             } else if (cmd == 121 || cmd == 0x2F || cmd == 0x82F) {
                 int8_t treble = tda7318GetTreble();
                 if (treble > TREBLE_MIN) tda7318SetTreble(treble - 1);
@@ -583,6 +601,7 @@ void handleInputEvent(InputEvent event) {
                 Serial.println("[IR] TRE-");
                 displayUpdateValue(treble - TREBLE_MIN, TREBLE_MAX - TREBLE_MIN);
                 displayShowParam("Treble", treble, 10000);
+                btSPPSendUpdate("treble", treble);
             } else if (cmd == 131) {
                 int8_t balance = tda7318GetBalance();
                 if (balance > BALANCE_MIN) tda7318SetBalance(balance - 1);
@@ -590,6 +609,7 @@ void handleInputEvent(InputEvent event) {
                 Serial.println("[IR] BAL-");
                 displayUpdateValue(balance - BALANCE_MIN, BALANCE_MAX - BALANCE_MIN);
                 displayShowParam("Balance", balance, 10000);
+                btSPPSendUpdate("balance", balance);
             } else if (cmd == 141 || cmd == 0x33 || cmd == 0x833 || cmd == 0x1033 || cmd == 0x10F3 || cmd == 0x18F3) {
                 uint8_t gain = tda7318GetGain();
                 if (gain > 0) tda7318SetGain(gain - 1);
@@ -597,6 +617,7 @@ void handleInputEvent(InputEvent event) {
                 Serial.println("[IR] GAIN-");
                 displayUpdateValue(gain, 3);
                 displayShowParam("Gain", gain, 10000);
+                btSPPSendUpdate("gain", gain);
             } else if (cmd == 0x2D || cmd == 0x82D) {
                 int8_t bass = tda7318GetBass();
                 if (bass < BASS_MAX) tda7318SetBass(bass + 1);
@@ -604,6 +625,7 @@ void handleInputEvent(InputEvent event) {
                 Serial.println("[IR] BASS+");
                 displayUpdateValue(bass - BASS_MIN, BASS_MAX - BASS_MIN);
                 displayShowParam("Bass", bass, 10000);
+                btSPPSendUpdate("bass", bass);
             } else if (cmd == 0x2B || cmd == 0x82B) {
                 int8_t treble = tda7318GetTreble();
                 if (treble < TREBLE_MAX) tda7318SetTreble(treble + 1);
@@ -611,6 +633,7 @@ void handleInputEvent(InputEvent event) {
                 Serial.println("[IR] TRE+");
                 displayUpdateValue(treble - TREBLE_MIN, TREBLE_MAX - TREBLE_MIN);
                 displayShowParam("Treble", treble, 10000);
+                btSPPSendUpdate("treble", treble);
             } else if (cmd == 0x2C || cmd == 0x82C) {
                 uint8_t gain = tda7318GetGain();
                 if (gain < 3) tda7318SetGain(gain + 1);
@@ -618,6 +641,7 @@ void handleInputEvent(InputEvent event) {
                 Serial.println("[IR] GAIN+");
                 displayUpdateValue(gain, 3);
                 displayShowParam("Gain", gain, 10000);
+                btSPPSendUpdate("gain", gain);
             } else if (cmd == 0x29 || cmd == 0x829) {
                 int8_t balance = tda7318GetBalance();
                 if (balance < BALANCE_MAX) tda7318SetBalance(balance + 1);
@@ -625,6 +649,7 @@ void handleInputEvent(InputEvent event) {
                 Serial.println("[IR] BAL+");
                 displayUpdateValue(balance - BALANCE_MIN, BALANCE_MAX - BALANCE_MIN);
                 displayShowParam("Balance", balance, 10000);
+                btSPPSendUpdate("balance", balance);
             } else if (cmd == 0x102B || cmd == 0x182B) {
                 handleInputChange(INPUT_BLUETOOTH);
                 Serial.println("[IR] INPUT BLUETOOTH");

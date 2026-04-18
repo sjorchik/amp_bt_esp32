@@ -6,11 +6,17 @@
 #include "fonts/Arsenal_Bold25.h"
 #include "tda7318.h"
 
+#include "images/bt_.h"
+#include "images/pc_.h"
+#include "images/tv_.h"
+#include "images/aux_.h"
+
 static TFT_eSPI tft = TFT_eSPI();
 
 static const char* inputLabels[] = {"BT", "PC", "TV", "AUX"};
 static const char* inputNames[] = {"Bluetooth", "Computer", "TV Box", "AUX"};
-static const char* inputImages[] = {"/bt_.bmp", "/pc_.bmp", "/tv_.bmp", "/aux_.bmp"};
+
+static const tImage* imgList[] = {&bt_, &pc_, &tv_, &aux_};
 
 static AudioInput lastInput = (AudioInput)255;
 static bool isMuted = false;
@@ -87,8 +93,8 @@ static void drawInputImage() {
     if (lastInput == INPUT_BLUETOOTH && btConnected) {
         if (strlen(btTitle) > 0 || strlen(btArtist) > 0 || strlen(btAlbum) > 0) {
             uint16_t albumColor = btIsPlaying ? 0x9772 : 0xF800;
-            uint16_t artistColor = btIsPlaying ? 0xFFE0  : 0xF800;
-            uint16_t titleColor = btIsPlaying ? 0x867D  : 0xF800;
+            uint16_t artistColor = btIsPlaying ? 0xFFE0 : 0xF800;
+            uint16_t titleColor = btIsPlaying ? 0x867D : 0xF800;
             
             drawTrimmedText(btAlbum, CONTENT_CX, 60, 230, albumColor);
             drawTrimmedText(btArtist, CONTENT_CX, 95, 230, artistColor);
@@ -104,57 +110,12 @@ static void drawInputImage() {
         return;
     }
     
-    const char* imgPath = inputImages[lastInput];
-    fs::File bmpFS = SPIFFS.open(imgPath, "r");
-    if (!bmpFS) return;
+    uint16_t w = imgList[lastInput]->width;
+    uint16_t h = imgList[lastInput]->height;
+    int16_t drawX = CONTENT_CX - w / 2;
+    int16_t drawY = 55 + (115 - h) / 2;
     
-    if (bmpFS.read() != 'B' || bmpFS.read() != 'M') {
-        bmpFS.close();
-        return;
-    }
-    
-    bmpFS.seek(0);
-    uint8_t header[54];
-    bmpFS.read(header, 54);
-    
-    int32_t bmpWidth = *(int32_t*)&header[18];
-    int32_t bmpHeight = *(int32_t*)&header[22];
-    uint16_t bitsPerPixel = *(uint16_t*)&header[28];
-    int32_t dataOffset = *(int32_t*)&header[10];
-    
-    int16_t drawX = CONTENT_CX - bmpWidth / 2;
-    int16_t drawY = 55 + (115 - bmpHeight) / 2;
-    
-    if (bitsPerPixel == 24) {
-        int32_t rowSize = (bmpWidth * 3 + 3) & ~3;
-        uint8_t *allData = new uint8_t[rowSize * bmpHeight];
-        bmpFS.seek(dataOffset);
-        bmpFS.read(allData, rowSize * bmpHeight);
-        
-        uint16_t *imgBuf = new uint16_t[bmpWidth * bmpHeight];
-        
-        for (int32_t row = 0; row < bmpHeight; row++) {
-            int32_t srcRow = bmpHeight - 1 - row;
-            uint8_t *rowPtr = allData + srcRow * rowSize;
-            
-            for (int32_t col = 0; col < bmpWidth; col++) {
-                uint8_t *pixelPtr = rowPtr + col * 3;
-                uint8_t b = pixelPtr[0];
-                uint8_t g = pixelPtr[1];
-                uint8_t r = pixelPtr[2];
-                imgBuf[row * bmpWidth + col] = (r & 0xF8) << 8 | (g & 0xFC) << 3 | (b >> 3);
-            }
-        }
-        
-        tft.setSwapBytes(true);
-        tft.pushImage(drawX, drawY, bmpWidth, bmpHeight, imgBuf);
-        tft.setSwapBytes(false);
-        
-        delete[] imgBuf;
-        delete[] allData;
-    }
-    
-    bmpFS.close();
+    tft.pushImage(drawX, drawY, w, h, imgList[lastInput]->data);
 }
 
 static void drawInputName() {
