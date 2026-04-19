@@ -6,31 +6,24 @@
 #include "fonts/Arsenal_Bold25.h"
 #include "tda7318.h"
 
-#include "images/bt_.h"
+#include "images/radio_.h"
 #include "images/pc_.h"
 #include "images/tv_.h"
 #include "images/aux_.h"
 
 static TFT_eSPI tft = TFT_eSPI();
 
-static const char* inputLabels[] = {"BT", "PC", "TV", "AUX"};
-static const char* inputNames[] = {"Bluetooth", "Computer", "TV Box", "AUX"};
+static const char* inputLabels[] = {"Radio", "PC", "TV", "AUX"};
+static const char* inputNames[] = {"Internet Radio", "Computer", "TV Box", "AUX"};
 
-static const tImage* imgList[] = {&bt_, &pc_, &tv_, &aux_};
+static const tImage* imgList[] = {&radio_, &pc_, &tv_, &aux_};
 
 static AudioInput lastInput = (AudioInput)255;
 static bool isMuted = false;
-static bool btConnected = false;
-static bool btIsPlaying = false;
-static char btArtist[64] = {0};
-static char btTitle[64] = {0};
-static char btAlbum[64] = {0};
 
 static bool showTempMessage = false;
 static char tempLabel[20] = {0};
 static uint32_t tempMessageTimeout = 0;
-
-static const int CONTENT_CX = 175;
 
 static void drawBar(int16_t value, int16_t maxVal, uint16_t fillColor) {
     int barX = 290;
@@ -89,26 +82,6 @@ static void drawInputImage() {
     if (lastInput >= INPUT_COUNT) return;
     
     tft.fillRect(60, 55, 230, 115, 0x0000);
-    
-    if (lastInput == INPUT_BLUETOOTH && btConnected) {
-        if (strlen(btTitle) > 0 || strlen(btArtist) > 0 || strlen(btAlbum) > 0) {
-            uint16_t albumColor = btIsPlaying ? 0x9772 : 0xF800;
-            uint16_t artistColor = btIsPlaying ? 0xFFE0 : 0xF800;
-            uint16_t titleColor = btIsPlaying ? 0x867D : 0xF800;
-            
-            drawTrimmedText(btAlbum, CONTENT_CX, 60, 230, albumColor);
-            drawTrimmedText(btArtist, CONTENT_CX, 95, 230, artistColor);
-            drawTrimmedText(btTitle, CONTENT_CX, 130, 230, titleColor);
-        } else {
-            tft.loadFont(Arsenal_Bold25);
-            tft.setTextColor(0x07FF);
-            uint16_t w = tft.textWidth("Connected");
-            tft.setCursor(CONTENT_CX - w / 2, 90);
-            tft.print("Connected");
-            tft.unloadFont();
-        }
-        return;
-    }
     
     uint16_t w = imgList[lastInput]->width;
     uint16_t h = imgList[lastInput]->height;
