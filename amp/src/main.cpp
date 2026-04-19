@@ -61,11 +61,6 @@ void setup() {
     Serial.println("[DISPLAY] Ініціалізація...");
     displayInit();
     
-    // Запуск в режимі очікування
-    Serial.println("[SYSTEM] Запуск в режимі очікування...");
-    tda7318SetMute(true);
-    displaySetStandby(true);
-    
     // Ініціалізація терміналу
     terminalInit();
     

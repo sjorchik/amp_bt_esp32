@@ -381,7 +381,7 @@ InputEvent inputPoll() {
 // ОБРОБКА ПОДІЙ
 // ============================================================================
 
-static bool isStandby = true;
+static bool isStandby = false;
 
 static void toggleStandby() {
     isStandby = !isStandby;
